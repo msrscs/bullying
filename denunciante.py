@@ -3,7 +3,8 @@
 # Curso: Segurança da Informação                       #
 # Período: 2025.1                                      #
 # Disciplina: Projeto 1                                #
-# Professor: Humberto Caetano                          #
+# Professor de Projeto 1: Humberto Caetano             #
+# Professora de Fundamentos de Programação: Carol Melo #
 # Projeto: App Denúncia de Bullying Anônima            #
 # Descrição: Módulo Denunciante                        #
 # Equipe:                                              #
@@ -15,10 +16,9 @@
 #           Mauro Sérgio Rezende da Silva              #
 #           Silvio Barros Tenório                      #
 # Versão: 1.0                                          #
-# Data: 10/05/2025                                     #
+# Data: 16/05/2025                                     #
 ######################################################## 
 
-from pickle import TRUE
 import dados
 import utilidades
 import flet as ft
@@ -508,6 +508,8 @@ def main(page: ft.Page):
                     if aux_reuniao_id > reuniao_id:
                        reuniao_id = aux_reuniao_id
                        flag_atualiza = True
+                else:
+                    reuniao_id = aux_reuniao_id
 
             # Página Inicial
             page.views.append(
@@ -718,7 +720,7 @@ def main(page: ft.Page):
                     cor = ft.Colors.RED
                 elif denuncia["Status"] == "Em Atendimento": # type: ignore
                     cor = ft.Colors.BLUE
-                elif denuncia["Status"] == "Em Atendimento": # type: ignore
+                elif denuncia["Status"] == "Encerrada": # type: ignore
                     cor = ft.Colors.GREEN
                 tf_v_status = ft.TextField(label="Status", value=denuncia["Status"], read_only=True, color=cor) # type: ignore
                 denuncia_comentarios = bd.listar_denuncias_comentarios_usuario(denuncia_id=denuncia_id)
@@ -883,6 +885,7 @@ def main(page: ft.Page):
                         ],
                     )
                 )
+                page.update()
                 # Iniciar atualização automática
                 flag_thread = True
                 asyncio.run(auto_reuniao(ct_reuniao, page))
@@ -996,4 +999,3 @@ def main(page: ft.Page):
 # Início da Aplicação
 if __name__ == '__main__':
     ft.app(target=main)
-    # ft.app(target=main, view=ft.AppView.WEB_BROWSER)

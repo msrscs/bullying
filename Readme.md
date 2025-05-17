@@ -10,8 +10,11 @@
 # Disciplina
     Projeto 1
 
-# Professor
+# Professor de Projeto 1
     Humberto Caetano
+
+# Professora de Fundamentos de Programação
+    Carol Melo
 
 # Equipe
     Artur Cavalcanti
@@ -51,7 +54,7 @@
         python.exe -m pip install --upgrade pip
 
     - Instalar o Flet
-        pip install flet
+        pip install flet[all]
     
     - Instalar o BCrypt:
         pip install bcrypt

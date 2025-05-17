@@ -3,7 +3,8 @@
 # Curso: Segurança da Informação                       #
 # Período: 2025.1                                      #
 # Disciplina: Projeto 1                                #
-# Professor: Humberto Caetano                          #
+# Professor de Projeto 1: Humberto Caetano             #
+# Professora de Fundamentos de Programação: Carol Melo #
 # Projeto: App Denúncia de Bullying Anônima            #
 # Descrição: Utilidades                                #
 # Equipe:                                              #
@@ -15,7 +16,7 @@
 #           Mauro Sérgio Rezende da Silva              #
 #           Silvio Barros Tenório                      #
 # Versão: 1.0                                          #
-# Data: 02/05/2025                                     #
+# Data: 15/05/2025                                     #
 ######################################################## 
 
 import hashlib

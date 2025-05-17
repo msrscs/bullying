@@ -3,7 +3,8 @@
 # Curso: Segurança da Informação                       #
 # Período: 2025.1                                      #
 # Disciplina: Projeto 1                                #
-# Professor: Humberto Caetano                          #
+# Professor de Projeto 1: Humberto Caetano             #
+# Professora de Fundamentos de Programação: Carol Melo #
 # Projeto: App Denúncia de Bullying Anônima            #
 # Descrição: Classe Banco de Dados                     #
 # Equipe:                                              #
@@ -15,7 +16,7 @@
 #           Mauro Sérgio Rezende da Silva              #
 #           Silvio Barros Tenório                      #
 # Versão: 1.0                                          #
-# Data: 05/05/2025                                     #
+# Data: 15/05/2025                                     #
 ######################################################## 
 
 import sqlite3
@@ -607,9 +608,9 @@ class BancoDados:
             flg = True
             for campo, valor in campos.items():
                 if campo == 'log_id':
-                   filtro = f'(LogId={valor})'
+                   filtro = f'(LoglId={valor})'
                 if campo == 'usuario_id':
-                   filtro = f'(UsuarioId={valor})'
+                   filtro = f'(Usuarioid={valor})'
                 elif campo == 'data_inicio':
                    filtro = f'(date(DataHora)>=date(\'{valor}\'))'
                 elif campo == 'data_fim':

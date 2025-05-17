@@ -3,7 +3,8 @@
 # Curso: Segurança da Informação                       #
 # Período: 2025.1                                      #
 # Disciplina: Projeto 1                                #
-# Professor: Humberto Caetano                          #
+# Professor de Projeto 1: Humberto Caetano             #
+# Professora de Fundamentos de Programação: Carol Melo #
 # Projeto: App Denúncia de Bullying Anônima            #
 # Descrição: Módulo Gerencial                          #
 # Equipe:                                              #
@@ -15,9 +16,10 @@
 #           Mauro Sérgio Rezende da Silva              #
 #           Silvio Barros Tenório                      #
 # Versão: 1.0                                          #
-# Data: 06/05/2025                                     #
+# Data: 16/05/2025                                     #
 ######################################################## 
 
+from turtle import color
 import dados
 import utilidades
 import flet as ft
@@ -31,14 +33,25 @@ import asyncio
 BANCO_DADOS = "bullying.db"
 CAMINHO_BANCO_DADOS = Path(BANCO_DADOS)
 FORMATO_DATA = "%d/%m/%Y"
+FORMATO_DATA_HORA = "%d/%m/%Y %H:%M:%S"
+FORMATO_DATA_HORA_ISO = "%Y-%m-%d %H:%M:%S.%f"
+SENHA_PADRAO_USUARIO = "Cesar@2025"
 
 # Variáveis Globais
+usuario_autenticado = False
+usuario_id = 0
+usuario_nome = ""
+usuario_tipo = ""
+usuario_email = ""
 denuncia_id = 0
 denuncia_id_gerado = 0
 data_reuniao = datetime.now().date()
 flag_thread = False
 flag_atualiza = False
 reniao_id = 0
+status = ""
+w_usuario_id = 0
+w_material_id = 0
 
 # Função de Início da Aplicação
 def main(page: ft.Page):
@@ -57,8 +70,13 @@ def main(page: ft.Page):
         page.theme_mode = ft.ThemeMode.LIGHT
         page.padding = 20
 
-        # Evento de mudança de 
+        # Evento de mudança de view
         def route_change(e):
+            global usuario_autenticado
+            global usuario_id
+            global usuario_nome
+            global usuario_tipo
+            global usuario_email
             global denuncia_id
             global denuncia
             global denuncia_id_gerado
@@ -67,59 +85,38 @@ def main(page: ft.Page):
             global flag_atualiza
             global reuniao_id
             global lv_reuniao
+            global status
+            global w_usuario_id
+            global w_material_id
 
             page.views.clear()
 
-            # Validar N° Denúncia
-            def validar_n_denuncia(e):
-                nonlocal n_denuncia_valida
-                n_denuncia_valida = False
+            # Validar Email
+            def validar_email(e):
+                nonlocal email_valida
+                email_valida = False
                 lb_erro.value = ""
-                # Verifica se é composto apenas por dígitos
-                if not re.match(r'^\d+$', tf_n_denuncia.value):  # type: ignore
-                    tf_n_denuncia.error_text = "Digite apenas números inteiros positivos"
+                # Verifica email
+                if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', tf_email.value):  # type: ignore
+                    tf_email.error_text = "Email inválido"
                 else:
-                    # Converte para inteiro e verifica se é maior que zero
-                    try:
-                        num = int(tf_n_denuncia.value)  # type: ignore
-                        if num <= 0:
-                            tf_n_denuncia.error_text = "O número deve ser maior que zero"
-                        else:
-                            tf_n_denuncia.error_text = None
-                            n_denuncia_valida = True
-                    except:
-                        tf_n_denuncia.error_text = "Número da denúncia inválido"
+                    tf_email.error_text = ""
+                    email_valida = True
                 validar_login()   
                 page.update()
 
             # Validar Senha
             def validar_senha(e):
                 nonlocal senha_valida
-                senha_valida = False
-                senha = tf_senha.value
-                erros = []
-                lb_erro.value = ""
-                # Verifica cada requisito individualmente
-                if senha:
-                    if len(senha) < 8:
-                        erros.append("Mínimo 8 caracteres")
-                    if not re.search(r'[A-Z]', senha):
-                        erros.append("Pelo menos 1 letra maiúscula")
-                    if not re.search(r'[a-z]', senha):
-                        erros.append("Pelo menos 1 letra minúscula")
-                    if not re.search(r'[0-9]', senha):
-                        erros.append("Pelo menos 1 número")
-                    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', senha):
-                        erros.append("Pelo menos 1 símbolo especial")
-                else:
-                    erros.append("Senha requerida")
-                if erros:
-                   senha_valida = False
-                   tf_senha.error_text = "Senha inválida"
-                else:
-                   senha_valida = True
-                   tf_senha.error_text = None
+                senha_valida = True
                 validar_login()   
+                page.update()
+
+            # Validar Senha Atual
+            def validar_senha_atual(e):
+                nonlocal senha_atual_valida
+                senha_atual_valida = True
+                validar_mudar_senha()   
                 page.update()
 
             # Validar Senha Nova
@@ -184,7 +181,7 @@ def main(page: ft.Page):
                     ]
         
                 cl_validacao_indicadores.update()
-                validar_fazer_denuncia()
+                validar_mudar_senha()
                 page.update()
                 validar_senha_nova_confirmar(e)
 
@@ -258,122 +255,162 @@ def main(page: ft.Page):
                     ]
         
                 cl_validacao_indicadores_confirmar.update()
-                validar_fazer_denuncia()
+                validar_mudar_senha()
                 page.update()
 
-            # Validar Descrição O que
-            def validar_descricao_o_que(e):
-                nonlocal descricao_o_que_valida
-                descricao_o_que_valida = False
-                if not tf_descricao_o_que.value.strip():  # type: ignore
-                    tf_descricao_o_que.error_text = "Requer preenchimento"
+            # Validar Email Usuário
+            def validar_email_usuario(e):
+                nonlocal email_usuario_valida
+                email_usuario_valida = False
+                lb_erro_usuario.value = ""
+                # Verifica email
+                if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', tf_email_usuario.value):  # type: ignore
+                    tf_email_usuario.error_text = "Email inválido"
                 else:
-                    tf_descricao_o_que.error_text = None
-                    descricao_o_que_valida = True
-
-                validar_fazer_denuncia()   
+                    tf_email_usuario.error_text = ""
+                    email_usuario_valida = True
+                validar_usuario()   
                 page.update()
 
-            # Validar Descrição Como se sente
-            def validar_descricao_como_se_sente(e):
-                nonlocal descricao_como_se_sente_valida
-                descricao_como_se_sente_valida = False
-                if not tf_descricao_como_se_sente.value.strip():  # type: ignore
-                    tf_descricao_como_se_sente.error_text = "Requer preenchimento"
+            # Validar Nome Usuário
+            def validar_nome_usuario(e):
+                nonlocal nome_usuario_valida
+                nome_usuario_valida = False
+                if not tf_nome_usuario.value.strip():  # type: ignore
+                    tf_nome_usuario.error_text = "Requer preenchimento"
                 else:
-                    tf_descricao_como_se_sente.error_text = None
-                    descricao_como_se_sente_valida = True
-
-                validar_fazer_denuncia()   
+                    tf_nome_usuario.error_text = None
+                    nome_usuario_valida = True
+                validar_usuario()   
                 page.update()
 
-            # Validar Local
-            def validar_local(e):
-                nonlocal local_valida
-                local_valida = False
-                if not dd_local.value.strip():  # type: ignore
-                    dd_local.error_text = "Requer preenchimento"
+            # Validar Tipo Usuário
+            def validar_tipo_usuario(e):
+                nonlocal tipo_usuario_valida
+                tipo_usuario_valida = False
+                if not dd_tipo_usuario.value.strip():  # type: ignore
+                    dd_tipo_usuario.error_text = "Requer preenchimento"
                 else:
-                    dd_local.error_text = None
-                    local_valida = True
-
-                validar_fazer_denuncia()   
+                    dd_tipo_usuario.error_text = None
+                    tipo_usuario_valida = True
+                validar_usuario()   
                 page.update()
 
-            # Validar Frequência
-            def validar_frequencia(e):
-                nonlocal frequencia_valida
-                frequencia_valida = False
-                if not dd_frequencia.value.strip():  # type: ignore
-                    dd_frequencia.error_text = "Requer preenchimento"
-                else:
-                    dd_frequencia.error_text = None
-                    frequencia_valida = True
-
-                validar_fazer_denuncia()   
-                page.update()
-
-            # Validar Tipo de Bullying
-            def validar_tipo_bullying(e):
-                nonlocal tipo_bullying_valida
-                tipo_bullying_valida = False
-                if not dd_tipo_bullying.value.strip():  # type: ignore
-                    dd_tipo_bullying.error_text = "Requer preenchimento"
-                else:
-                    dd_tipo_bullying.error_text = None
-                    tipo_bullying_valida = True
-
-                validar_fazer_denuncia()   
-                page.update()
+            # Validar Usuario
+            def validar_usuario():
+                nonlocal email_usuario_valida
+                nonlocal nome_usuario_valida
+                nonlocal tipo_usuario_valida
+                usuario_validado = all([
+                    email_usuario_valida,
+                    nome_usuario_valida,
+                    tipo_usuario_valida
+                ])
+                bt_criar_usuario.disabled = not usuario_validado
 
             # Validar login
             def validar_login():
-                nonlocal n_denuncia_valida
+                nonlocal email_valida
                 nonlocal senha_valida
                 login_validado = all([
-                    n_denuncia_valida,
+                    email_valida,
                     senha_valida
                 ])
                 bt_login.disabled = not login_validado
 
-            # Validar fazer Denúncia
-            def validar_fazer_denuncia():
-                nonlocal descricao_o_que_valida
-                nonlocal descricao_como_se_sente_valida
-                nonlocal local_valida
-                nonlocal frequencia_valida
-                nonlocal tipo_bullying_valida
+            # Seleciona Denúncia
+            def seleciona_denuncia(e, select_denuncia):
+                global denuncia_id
+                denuncia_id = select_denuncia
+                return page.go("/acompanhar")
+
+            # Validar Mudar Senha
+            def validar_mudar_senha():
+                nonlocal senha_atual_valida
                 nonlocal senha_nova_valida
                 nonlocal senha_nova_confirmar_valida
-                fazer_denuncia_validado = all([
-                    descricao_o_que_valida,
-                    descricao_como_se_sente_valida,
-                    local_valida,
-                    frequencia_valida,
-                    tipo_bullying_valida,
+                mudar_senha_validado = all([
+                    senha_atual_valida,
                     senha_nova_valida,
                     senha_nova_confirmar_valida
                 ])
-                bt_fazer_decuncia.disabled = not fazer_denuncia_validado
+                bt_mudar_senha.disabled = not mudar_senha_validado
 
-            # Acompanhar Denúncia de Bullying (Login)
-            def acompanhar_login(e):
-                global denuncia_id
-                denuncia_id = 0
-                denuncia = bd.verificar_login_denuncia(denuncia_id=int(tf_n_denuncia.value)) # type: ignore
-                # print(denuncia)
-                if denuncia == None:
+            # Validar Nome Usuário Edição
+            def validar_nome_usuario_e(e):
+                nonlocal nome_usuario_valida
+                nome_usuario_valida = True
+                if not tf_nome_usuario.value.strip():  # type: ignore
+                    tf_nome_usuario.error_text = "Requer preenchimento"
+                    nome_usuario_valida = False
+                else:
+                    tf_nome_usuario.error_text = None
+                    nome_usuario_valida = True
+                validar_usuario_e()   
+                page.update()
+
+            # Validar Tipo Usuário Edição
+            def validar_tipo_usuario_e(e):
+                nonlocal tipo_usuario_valida
+                tipo_usuario_valida = True
+                if not dd_tipo_usuario.value.strip():  # type: ignore
+                    dd_tipo_usuario.error_text = "Requer preenchimento"
+                    tipo_usuario_valida = False
+                else:
+                    dd_tipo_usuario.error_text = None
+                    tipo_usuario_valida = True
+                validar_usuario_e()   
+                page.update()
+
+            # Validar Status Usuário Edição
+            def validar_status_usuario_e(e):
+                nonlocal status_usuario_valida
+                status_usuario_valida = True
+                if not dd_status_usuario.value.strip():  # type: ignore
+                    dd_status_usuario.error_text = "Requer preenchimento"
+                    status_usuario_valida = False
+                else:
+                    dd_status_usuario.error_text = None
+                    status_usuario_valida = True
+                validar_usuario_e()   
+                page.update()
+
+            # Validar Usuario Edição
+            def validar_usuario_e():
+                nonlocal nome_usuario_valida
+                nonlocal tipo_usuario_valida
+                nonlocal status_usuario_valida
+                usuario_validado = all([
+                    nome_usuario_valida,
+                    tipo_usuario_valida,
+                    status_usuario_valida
+                ])
+                bt_editar_usuario.disabled = not usuario_validado
+
+            # Login
+            def login(e):
+                global usuario_autenticado
+                global usuario_id
+                global usuario_nome
+                global usuario_tipo
+                global usuario_email
+                usuario = bd.verificar_login_usuario(email=tf_email.value) # type: ignore
+                if usuario == None:
                     lb_erro.value = "Login inválido"
                     page.update()
                     return None
                 else:
-                    if utilidades.verificar_hash_bcrypt(tf_senha.value, denuncia["Senha"]): # type: ignore
-                        denuncia_id = denuncia["DenunciaId"]
-                        return page.go("/acompanhar")
+                    if utilidades.verificar_hash_bcrypt(tf_senha.value, usuario["Senha"]): # type: ignore
+                       usuario_autenticado = True
+                       usuario_id = usuario["UsuarioId"]
+                       usuario_nome = usuario["Nome"]
+                       usuario_tipo = usuario["Tipo"]
+                       usuario_email = usuario["Email"]
+                       return page.go("/menu")
                     else:
-                        lb_erro.value = "Login inválido [Autenticação]"
-                        page.update()
-                        return None
+                       lb_erro.value = "Login inválido [Autenticação]"
+                       page.update()
+                       return None
 
             # Validar Comentário
             def validar_comentario(e):
@@ -393,23 +430,149 @@ def main(page: ft.Page):
                 else:
                    comentario_valida = True
                    tf_comentario.error_text = None
-                bt_salvar_comentario.disabled = not comentario_valida
+                validar_envio_comentario()   
                 page.update()
+
+            # Validar Status
+            def validar_status(e):
+                nonlocal status_valida
+                status_valida = False
+                if not dd_status.value.strip():  # type: ignore
+                    dd_status_error_text = "Requer preenchimento"
+                else:
+                    dd_status.error_text = None
+                    status_valida = True
+                validar_envio_comentario()   
+                page.update()
+
+            # Validar Envio Comentário
+            def validar_envio_comentario():
+                nonlocal comentario_valida
+                nonlocal status_valida
+                comentario_validado = all([
+                    comentario_valida,
+                    status_valida
+                ])
+                bt_salvar_comentario.disabled = not comentario_validado
+
+            # Validar Descrição Material Educativo
+            def validar_descricao_material(e):
+                nonlocal descricao_material_valida
+                descricao_material_valida = False
+                if not tf_descricao_material.value.strip():  # type: ignore
+                    tf_descricao_material.error_text = "Requer preenchimento"
+                else:
+                    tf_descricao_material.error_text = None
+                    descricao_material_valida = True
+                validar_material()   
+                page.update()
+
+            # Validar Link Material Educativo
+            def validar_link_material(e):
+                nonlocal link_material_valida
+                link_material_valida = False
+                if not tf_link_material.value.strip():  # type: ignore
+                    tf_link_material.error_text = "Requer preenchimento"
+                else:
+                    tf_link_material.error_text = None
+                    link_material_valida = True
+                validar_material()   
+                page.update()
+
+            # Validar Material Educativo
+            def validar_material():
+                nonlocal descricao_material_valida
+                nonlocal link_material_valida
+                material_validado = all([
+                    descricao_material_valida,
+                    link_material_valida
+                ])
+                bt_criar_material.disabled = not material_validado
+
+            # Validar Descrição Material Educativo Edição
+            def validar_descricao_material_e(e):
+                nonlocal descricao_material_valida
+                descricao_material_valida = True
+                if not tf_descricao_material.value.strip():  # type: ignore
+                    tf_descricao_material.error_text = "Requer preenchimento"
+                    descricao_material_valida = False
+                else:
+                    tf_descricao_material.error_text = None
+                    decricao_material_valida = True
+                validar_material_e()   
+                page.update()
+
+            # Validar Link Material Educativo Edição
+            def validar_link_material_e(e):
+                nonlocal link_material_valida
+                link_material_valida = True
+                if not tf_link_material.value.strip():  # type: ignore
+                    tf_link_material.error_text = "Requer preenchimento"
+                    link_material_valida = False
+                else:
+                    tf_link_material.error_text = None
+                    link_material_valida = True
+                validar_material_e()   
+                page.update()
+
+            # Validar Status Material Educativo Edição
+            def validar_status_material_e(e):
+                nonlocal status_material_valida
+                status_material_valida = True
+                if not dd_status_material.value.strip():  # type: ignore
+                    dd_status_material.error_text = "Requer preenchimento"
+                    status_material_valida = False
+                else:
+                    dd_status_material.error_text = None
+                    status_material_valida = True
+                validar_material_e()   
+                page.update()
+
+            # Validar Material Educativo Edição
+            def validar_material_e():
+                nonlocal descricao_material_valida
+                nonlocal link_material_valida
+                nonlocal status_material_valida
+                material_validado = all([
+                    descricao_material_valida,
+                    link_material_valida,
+                    status_material_valida
+                ])
+                bt_editar_material.disabled = not material_validado
 
             # Acompanhar Denúncia de Bullying (Novo Comentário)
             def novo_comentario(e):
                 global denuncia_id
+                global usuario_id
+                global status
                 denuncia = bd.buscar_denuncia_por_id(denuncia_id)
                 if denuncia != None:
-                    bd.criar_denuncia_comentario(denuncia_id, tf_comentario.value, 0, denuncia["Status"]) # type: ignore
+                    bd.criar_denuncia_comentario(denuncia_id, tf_comentario.value, usuario_id, denuncia["Status"]) # type: ignore
+                    if not status == dd_status.value:
+                        bd.atualizar_denuncia(denuncia_id, status=dd_status.value)
+                        bd.criar_log(f"Alterado Status [{status}] => [{dd_status.value}] da Denúncia N° [{denuncia_id}]", usuario_id)
                 return page.go("/acompanhar")
 
-            # Fazer Denúncia de Bullying
-            def fazer_denuncia(e):
-                global denuncia_id_gerado
-                denuncia_id_gerado = bd.criar_denuncia(utilidades.gerar_hash_bcrypt(tf_senha_nova.value), tf_descricao_o_que.value, tf_descricao_como_se_sente.value, dd_local.value, dd_frequencia.value, dd_tipo_bullying.value) # type: ignore
-                # print(denuncia_id_gerado)
-                return page.go("/denunciaaviso")
+            # Mudar Senha Usuário
+            def mudar_senha(e):
+                global usuario_id
+                global usuario_nome
+                global usuario_tipo
+                global usuario_email
+                usuario = bd.buscar_usuario_por_id(usuario_id) # type: ignore
+                if usuario == None:
+                    lb_erro_muda_senha.value = "Usuário inválido"
+                    page.update()
+                    return None
+                else:
+                    if utilidades.verificar_hash_bcrypt(tf_senha_atual.value, usuario["Senha"]): # type: ignore
+                       bd.atualizar_usuario(usuario_id, senha=utilidades.gerar_hash_bcrypt(tf_senha_nova.value)) # type: ignore
+                       bd.criar_log(f"Alterada a Senha do Usuário Id [{usuario_id}]", usuario_id)
+                       return page.go("/menu")
+                    else:
+                       lb_erro_muda_senha.value = "Senha Atual inválida"
+                       page.update()
+                       return None
 
             # Validar Mensagem
             def validar_mensagem(e):
@@ -437,7 +600,8 @@ def main(page: ft.Page):
                 global denuncia_id
                 global data_reuniao
                 global flag_thread
-                bd.criar_denuncia_reuniao(denuncia_id, tf_mensagem.value, 0) # type: ignore
+                global usuario_id
+                bd.criar_denuncia_reuniao(denuncia_id, tf_mensagem.value, usuario_id) # type: ignore
                 tf_mensagem.value = ""
                 bt_enviar_reuniao.disabled = True
                 page.update()
@@ -446,6 +610,7 @@ def main(page: ft.Page):
             async def auto_reuniao(ct_reuniao, page):
                 global lv_reuniao
                 global flag_atualiza
+                global flag_thread
                 while flag_thread:
                     # print(f"Auto {datetime.now().strftime('%d/%m/%Y %H:%M:%S')} {flag_atualiza}")
                     atualizar_reuniao(True)
@@ -453,7 +618,7 @@ def main(page: ft.Page):
                         flag_atualiza = False
                         ct_reuniao.content.controls = [lv_reuniao]
                         page.update()
-                    await asyncio.sleep(1)  # Espera 2 segundos antes de atualizar novamente
+                    await asyncio.sleep(1)  # Espera 1 segundos antes de atualizar novamente
 
             # Sair Reunião
             def sair_reuniao(e):
@@ -468,9 +633,9 @@ def main(page: ft.Page):
                 global data_reuniao
                 global lv_reuniao
                 global flag_atualiza
+                global flag_thread
                 
                 aux_reuniao_id = 0
-                
                 reuniao = bd.listar_denuncias_reuniao_usuario(denuncia_id=denuncia_id, denuncia_reuniao_id=reuniao_id, data=data_reuniao)
 
                 for msg in reuniao:
@@ -478,9 +643,9 @@ def main(page: ft.Page):
                     ct_reuniao = ft.Container(
                         content=ft.Column(
                             controls=[
-                                ft.Text(msg["UsuarioTipo"], weight=ft.FontWeight.BOLD),
+                                ft.Text(msg["UsuarioTipo"] if msg["UsuarioTipo"] == "Denunciante" else f'{msg["UsuarioTipo"]} - {msg["UsuarioNome"]}', weight=ft.FontWeight.BOLD),
                                 ft.Text(msg["Mensagem"], size=14),
-                                ft.Text(datetime.fromisoformat(msg["DataHora"]).strftime('%d/%m/%Y %H:%M:%S'), size=10, color=ft.Colors.GREY),
+                                ft.Text(datetime.fromisoformat(msg["DataHora"]).strftime(FORMATO_DATA_HORA), size=10, color=ft.Colors.GREY),
                             ],
                             spacing=2,
                         ),
@@ -506,206 +671,406 @@ def main(page: ft.Page):
                     if aux_reuniao_id > reuniao_id:
                        reuniao_id = aux_reuniao_id
                        flag_atualiza = True
+                else:
+                    reuniao_id = aux_reuniao_id
 
-            # Página Inicial
+            # Criar containers para cada célula com largura fixa
+            def criar_celula(conteudo, largura=None, alinhamento=ft.alignment.center_left):
+                return ft.Container(
+                    content=conteudo,
+                    width=largura,
+                    padding=10,
+                    alignment=alinhamento,
+                )
+
+            # Seleciona Usuário
+            def seleciona_usuario(e, select_usuario):
+                global w_usuario_id
+                w_usuario_id = select_usuario
+                return page.go("/usuario")
+
+            # Criar Usuário
+            def criar_usuario(e):
+                usuario = bd.buscar_usuario_por_email(tf_email_usuario.value) # type: ignore
+                if not usuario == None:
+                    lb_erro_usuario.value = "Email do Usuário já existe"
+                    page.update()
+                    return None
+                else:
+                    aux_usuario_id = bd.criar_usuario(tf_email_usuario.value, utilidades.gerar_hash_bcrypt(SENHA_PADRAO_USUARIO), tf_nome_usuario.value, dd_tipo_usuario.value, "Ativo") # type: ignore
+                    bd.criar_log(f"Criado o Usuário [{aux_usuario_id}] [{tf_email_usuario.value}] [{tf_email_usuario.value}]", usuario_id)
+                    return page.go("/cadastrousuarios")
+
+            # Seleciona Editar Usuário 
+            def seleciona_editar_usuario(e, select_usuario):
+                global w_usuario_id
+                w_usuario_id = select_usuario
+                return page.go("/editarusuario")
+
+            # Seleciona Apagar Usuário 
+            def seleciona_apagar_usuario(e, select_usuario):
+                global w_usuario_id
+                w_usuario_id = select_usuario
+                return page.go("/apagarusuario")
+
+            # Seleciona Resetar Senha Usuário 
+            def seleciona_resetar_usuario(e, select_usuario):
+                global w_usuario_id
+                w_usuario_id = select_usuario
+                return page.go("/resetarusuario")
+
+            # Editar Usuário
+            def editar_usuario(e):
+                global usuario_id
+                global w_usuario_id
+                usuario = bd.buscar_usuario_por_id(w_usuario_id) # type: ignore
+                if usuario == None:
+                    lb_erro_usuario.value = "Usuário não existe"
+                    page.update()
+                    return None
+                else:
+                   bd.atualizar_usuario(w_usuario_id, nome=tf_nome_usuario.value, tipo=dd_tipo_usuario.value, status=dd_status_usuario.value) # type: ignore
+                   bd.criar_log(f"Editado o Usuário [{w_usuario_id}] [{usuario['Email']}] ([{usuario['Nome']}] => [{tf_nome_usuario.value}]) ([{usuario['Tipo']}] => [{dd_tipo_usuario.value}]) ([{usuario['Status']}] => [{dd_status_usuario.value}])", usuario_id)
+                return page.go("/cadastrousuarios")
+
+            # Apagar Usuário
+            def apagar_usuario(e):
+                global usuario_id
+                global w_usuario_id
+                usuario = bd.buscar_usuario_por_id(w_usuario_id) # type: ignore
+                if usuario == None:
+                    lb_erro_usuario.value = "Usuário não existe"
+                    page.update()
+                    return None
+                else:
+                   bd.deletar_usuario(w_usuario_id) # type: ignore
+                   bd.criar_log(f"Apagado o Usuário [{w_usuario_id}] [{usuario['Email']}] ([{usuario['Nome']}]", usuario_id)
+                return page.go("/cadastrousuarios")
+
+            # Resetar Usuário
+            def resetar_usuario(e):
+                global usuario_id
+                global w_usuario_id
+                usuario = bd.buscar_usuario_por_id(w_usuario_id) # type: ignore
+                if usuario == None:
+                    lb_erro_usuario.value = "Usuário não existe"
+                    page.update()
+                    return None
+                else:
+                   bd.atualizar_usuario(w_usuario_id, senha=utilidades.gerar_hash_bcrypt(SENHA_PADRAO_USUARIO)) # type: ignore
+                   bd.criar_log(f"Resetada a Senha do Usuário [{w_usuario_id}] [{usuario['Email']}] ([{usuario['Nome']}]", usuario_id)
+                return page.go("/cadastrousuarios")
+
+            # Seleciona Material Educativo
+            def seleciona_material(e, select_material):
+                global w_material_id
+                w_material_id = select_material
+                return page.go("/material")
+
+            # Criar Material Educativo
+            def criar_material(e):
+                global usuario_id
+                aux_material_id = bd.criar_material_educativo(tf_descricao_material.value, tf_link_material.value, usuario_id, 0, "Ativo") # type: ignore
+                bd.criar_log(f"Criado o Material Educativo [{aux_material_id}]", usuario_id)
+                return page.go("/cadastromateriais")
+
+            # Seleciona Editar Material Educativo 
+            def seleciona_editar_material(e, select_material):
+                global w_material_id
+                w_material_id = select_material
+                return page.go("/editarmaterial")
+
+            # Seleciona Apagar Material Educativo 
+            def seleciona_apagar_material(e, select_material):
+                global w_material_id
+                w_material_id = select_material
+                return page.go("/apagarmaterial")
+
+            # Editar Material Educativo
+            def editar_material(e):
+                global usuario_id
+                global w_material_id
+                print("1", w_material_id)
+                material = bd.buscar_material_educativo_por_id(w_material_id) # type: ignore
+                if material == None:
+                    lb_erro_material.value = "Material Educativo não existe"
+                    page.update()
+                    return None
+                else:
+                   bd.atualizar_material_educativo(w_material_id, descricao=tf_descricao_material.value, link=tf_link_material.value, usuario_id_alterou=usuario_id, status=dd_status_material.value) # type: ignore
+                   bd.criar_log(f"Editado o Material Educativo [{w_material_id}] ([{material['Descricao']}] => [{tf_descricao_material.value}]) ([{material['Link']}] => [{tf_link_material.value}]) ([{material['Status']}] => [{dd_status_material.value}])", usuario_id)
+                return page.go("/cadastromateriais")
+
+            # Apagar Material Educativo
+            def apagar_material(e):
+                global usuario_id
+                global w_material_id
+                material = bd.buscar_material_educativo_por_id(w_material_id) # type: ignore
+                if material == None:
+                    lb_erro_material.value = "Material Educativo não existe"
+                    page.update()
+                    return None
+                else:
+                   bd.deletar_material_educativo(w_material_id) # type: ignore
+                   bd.criar_log(f"Apagado o Material Educativo [{w_material_id}] [{material['Descricao']}]", usuario_id)
+                return page.go("/cadastromateriais")
+
+            ######################## 
+            # Página Inicial (Login)
+            email_valida = False
+            senha_valida = False
+            tf_email = ft.TextField(label="Email do Usuário", on_change=validar_email)
+            tf_senha = ft.TextField(label="Senha", password=True, can_reveal_password=True, on_change=validar_senha)
+            lb_erro = ft.Text("", color=ft.Colors.RED)
+            bt_login = ft.ElevatedButton("Login", on_click=login, icon=ft.Icons.LOCK, disabled=True)
+
+            # tf_email.value = "msrs@cesar.school"
+            # tf_senha.value = "senha#U444"
+
             page.views.append(
                 ft.View(
                     "/",
                     [
-                        ft.AppBar(title=ft.Text("Denúncia de Bullying Anônima"), bgcolor=ft.Colors.RED_300),
+                        ft.AppBar(title=ft.Text("Denúncia de Bullying Anônima - Gerencial"), bgcolor=ft.Colors.BLUE_300),
                         ft.Row(
-                                controls=[ft.Image(src="assets/logo.jpg", width=200,height=200)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            controls=[ft.Text("Informar o email e senha do usuário para ter acesso ao Gerencial.", weight=ft.FontWeight.BOLD)],
+                            alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                         ),
                         ft.Row(
-                                controls=[ft.ElevatedButton("Fazer Denúncia de Bullying Anônima", on_click=lambda _: page.go("/denuncia"), icon=ft.Icons.APP_REGISTRATION)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            controls=[tf_email],
+                            alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                         ),
                         ft.Row(
-                                controls=[ft.ElevatedButton("Acompanhar Denúncia de Bullying", on_click=lambda _: page.go("/acompanharlogin"), icon=ft.Icons.APPS_OUTAGE)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            controls=[tf_senha],
+                            alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                         ),
                         ft.Row(
-                                controls=[ft.ElevatedButton("Materiais Educativos", on_click=lambda _: page.go("/materiaiseducativos"), icon=ft.Icons.CASES_ROUNDED)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            controls=[lb_erro],
+                            alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                        ),
+                        ft.Row(
+                            controls=[bt_login],
+                            alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                         ),
                     ],
                 )
             )
-            
-            # Página Fazer Denúncia de Bullying Anônima
-            if page.route == "/denuncia":
-                descricao_o_que_valida = False
-                descricao_como_se_sente_valida = False
-                local_valida = False
-                frequencia_valida = False
-                tipo_bullying_valida = False
-                senha_nova_valida = False
-                senha_nova_confirmar_valida = False
-                tf_descricao_o_que = ft.TextField(label="Descrição - O que?", multiline=True, width=610, on_change=validar_descricao_o_que) # type: ignore
-                tf_descricao_como_se_sente = ft.TextField(label="Descrição - Como se sente?", multiline=True, width=610, on_change=validar_descricao_como_se_sente) # type: ignore
-                dd_local = ft.Dropdown(label="Local", 
-                                            options=[
-                                                ft.dropdown.Option("Escola"),
-                                                ft.dropdown.Option("Internet"),
-                                                ft.dropdown.Option("Trabalho"),
-                                                ft.dropdown.Option("Outro"),
-                                                ], on_change=validar_local)
-                dd_frequencia = ft.Dropdown(label="Frequência", 
-                                                options=[
-                                                    ft.dropdown.Option("Única vez"),
-                                                    ft.dropdown.Option("Algumas vezes"),
-                                                    ft.dropdown.Option("Frequentemente"),
-                                            ], on_change=validar_frequencia)
-                dd_tipo_bullying = ft.Dropdown(label="Tipo Bullying",
-                                                options=[
-                                                    ft.dropdown.Option("Físico"),
-                                                    ft.dropdown.Option("Verbal"),
-                                                    ft.dropdown.Option("Psicológico"),
-                                                    ft.dropdown.Option("Ciberbullying"),
-                                                    ft.dropdown.Option("Outro"),
-                                            ], on_change=validar_tipo_bullying)
-                tf_senha_nova = ft.TextField(label="Nova Senha", password=True, can_reveal_password=True, on_change=validar_senha_nova)
-                
-                cl_validacao_indicadores = ft.Column(spacing=5)
 
-                tf_senha_nova_confirmar = ft.TextField(label="Confirmar a Senha", password=True, can_reveal_password=True, on_change=validar_senha_nova_confirmar)
-
-                cl_validacao_indicadores_confirmar = ft.Column(spacing=5)
-
-                bt_fazer_decuncia = ft.ElevatedButton("Fazer Denúncia", on_click=fazer_denuncia, disabled=True, icon=ft.Icons.ANNOUNCEMENT)
-
+            # Menu
+            if page.route == "/menu":
                 page.views.append(
                    ft.View(
-                        "/denuncia",
+                        "/menu",
                         [
-                            # ft.AppBar(title=ft.Text("Fazer Denúncia de Bullying Anônima"), bgcolor=ft.Colors.RED_300),
-                            ft.AppBar(
-                                title=ft.Text("Fazer Denúncia de Bullying Anônima"),
-                                leading=ft.IconButton(
-                                    icon=ft.Icons.ARROW_BACK,
-                                    tooltip="Voltar",  # Tooltip modificado
-                                    on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
+                            ft.AppBar(title=ft.Text("Denúncia de Bullying Anônima - Gerencial"), 
+                                    bgcolor=ft.Colors.BLUE_300,
+                                    center_title=False,
+                                    actions=[
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Column([
+                                                    ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                    ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                    ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                    ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                    ], spacing=1),
+                                                # ft.Icon(ft.Icons.PERSON)
+                                                ft.IconButton(
+                                                    ft.Icons.PERSON,
+                                                    # icon_color=ft.Colors.BLUE_700,
+                                                    tooltip="Mudar Senha Usuário",
+                                                    on_click=lambda _: page.go("/mudarsenha")
+                                                    )
+                                            ], 
+                                            spacing=2,
+                                            ),
+                                            padding=ft.padding.only(right=20)
+                                        )
+                                    ],
+                                    leading=ft.IconButton(
+                                      icon=ft.Icons.ARROW_BACK,
+                                      tooltip="Voltar",  # Tooltip modificado
+                                      on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
+                                    ),
                                 ),
-                                bgcolor=ft.Colors.RED_300,
-                            ),
-                            ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
-                                ft.Row(
-                                    controls=[tf_descricao_o_que],
+                            ft.Row(
+                                    controls=[ft.Image(src="assets/logo.jpg", width=200,height=200)],
                                     alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[tf_descricao_como_se_sente],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[dd_local, dd_frequencia, dd_tipo_bullying],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[ft.Text("Criar a Senha forte para ter acesso ao acompanhamento da denúncia.", weight=ft.FontWeight.BOLD)],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[tf_senha_nova, cl_validacao_indicadores],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[tf_senha_nova_confirmar, cl_validacao_indicadores_confirmar],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                                ft.Row(
-                                    controls=[bt_fazer_decuncia],
-                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                                ),
-                            ]), expand=True, padding=10),
-                        ],
-                    )
-                )
-            
-            # Página Fazer Denúncia de Bullying Anônima (Aviso)
-            if page.route == "/denunciaaviso":
-                tf_v_aviso = ft.TextField(label="N° Denúncia", value=str(denuncia_id_gerado), read_only=True,  text_style=ft.TextStyle(weight=ft.FontWeight.BOLD, size=18, color=ft.Colors.BLUE))
-
-                page.views.append(
-                   ft.View(
-                        "/denunciaaviso",
-                        [
-                            ft.AppBar(
-                                title=ft.Text("Fazer Denúncia de Bullying Anônima (Aviso)"),
-                                leading=ft.IconButton(
-                                    icon=ft.Icons.ARROW_BACK,
-                                    tooltip="Voltar",  # Tooltip modificado
-                                    on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
-                                ),
-                                bgcolor=ft.Colors.RED_300,
                             ),
                             ft.Row(
-                                controls=[ft.Text("Atenção utilizar esse N° de Denúncia para Acompanhar a Denúncia, junto com a senha que você cadastrou.", color=ft.Colors.RED, weight=ft.FontWeight.BOLD)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                    controls=[ft.ElevatedButton("Acompanhar as Denúncias de Bullying", on_click=lambda _: page.go("/acompanhardenuncia"), icon=ft.Icons.APPS_OUTAGE)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                             ),
                             ft.Row(
-                                controls=[tf_v_aviso],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                    controls=[ft.ElevatedButton("Cadastro de Materiais Educativos", on_click=lambda _: page.go("/cadastromateriais"), icon=ft.Icons.CASES_ROUNDED)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                    controls=[ft.ElevatedButton("Cadastro de Usuários", on_click=lambda _: page.go("/cadastrousuarios"), icon=ft.Icons.SUPERVISED_USER_CIRCLE)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                    controls=[ft.ElevatedButton("Visualizar Log", on_click=lambda _: page.go("/visualizarlog"), icon=ft.Icons.REPORT)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                             ),
                         ],
                     )
                 )
-            
-            # Página Acompanhar Denúncia de Bullying Login
-            if page.route == "/acompanharlogin":
-                n_denuncia_valida = False
-                senha_valida = False
-                tf_n_denuncia = ft.TextField(label="Número da Denúncia", on_change=validar_n_denuncia, keyboard_type=ft.KeyboardType.NUMBER, input_filter=ft.NumbersOnlyInputFilter())
-                tf_senha = ft.TextField(label="Senha", password=True, can_reveal_password=True, on_change=validar_senha)
-                lb_erro = ft.Text("", color=ft.Colors.RED)
-                bt_login = ft.ElevatedButton("Login", on_click=acompanhar_login, icon=ft.Icons.LOCK, disabled=True)
+
+            # Página Acompanhar Denúncia de Bullying
+            if page.route == "/acompanhardenuncia":
+                # Cabeçalho fixo
+                cabecalho = ft.Row(
+                    controls=[
+                        criar_celula(ft.Text("N° Denúncia", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Data e Hora", weight=ft.FontWeight.BOLD), 120, ft.alignment.top_center),
+                        criar_celula(ft.Text("Descrição", weight=ft.FontWeight.BOLD), 650, ft.alignment.top_center),
+                        criar_celula(ft.Text("Status", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                    ],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.START
+                )
+                denuncias = bd.listar_denuncias()
+                # Corpo da tabela com scroll
+                linhas = []
+                zebrado = False
+                for den in denuncias:
+                    cor = ft.Colors.BLACK
+                    if den["Status"] == "Aberta": # type: ignore
+                        cor = ft.Colors.RED
+                    elif den["Status"] == "Em Atendimento": # type: ignore
+                        cor = ft.Colors.BLUE
+                    elif den["Status"] == "Encerrada": # type: ignore
+                        cor = ft.Colors.GREEN
+                    data_obj = datetime.strptime(den["DataHora"], FORMATO_DATA_HORA_ISO)
+                    data_formatada = data_obj.strftime(FORMATO_DATA_HORA)
+                    if zebrado:
+                        cor_zebrado = ft.Colors.BLUE_GREY_100
+                    else:
+                        cor_zebrado = ft.Colors.WHITE
+                    zebrado = not zebrado
+                    linhas.append(
+                        ft.Container(
+                            ft.Row(
+                                controls=[
+                                    criar_celula(ft.Text(den["DenunciaId"], weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(ft.Text(data_formatada), 120, ft.alignment.top_center),
+                                    criar_celula(
+                                        ft.Text(
+                                            den["DescricaoOque"],
+                                            max_lines=2,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                            tooltip=den["DescricaoOque"],
+                                            selectable=True,
+                                        ), 
+                                        650
+                                    ),
+                                    criar_celula(ft.Text(den["Status"], color=cor, weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(
+                                        ft.IconButton(
+                                            ft.Icons.SELECT_ALL,
+                                            icon_color=ft.Colors.BLUE_700,
+                                            tooltip="Selecionar Denúncia",
+                                            on_click=lambda e, select_denuncia=den["DenunciaId"]: seleciona_denuncia(e, select_denuncia)
+                                            ),
+                                        150, ft.alignment.top_center
+                                    )
+                                ],
+                                spacing=0,
+                                vertical_alignment=ft.CrossAxisAlignment.START
+                            ),
+                            bgcolor=cor_zebrado,
+                            padding=0,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        )
+                    )
+                # Tabela completa
+                tabela = ft.Column(
+                    controls=[
+                        # Cabeçalho fixo
+                        ft.Container(
+                            cabecalho,
+                            bgcolor=ft.Colors.GREY,
+                            padding=10,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        ),
+                        # Corpo com scroll
+                        ft.Container(
+                            content=ft.ListView(
+                                controls=linhas,
+                                expand=True,
+                                spacing=0,
+                                padding=0,
+                            ),
+                            border=ft.border.only(
+                                bottom=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            ),
+                            expand=True
+                        )
+                    ],
+                    spacing=0,
+                    expand=True
+                )
                 page.views.append(
                    ft.View(
-                        "/acompanharlogin",
+                        "/acompanhar",
                         [
-                            ft.AppBar(
-                                title=ft.Text("Acompanhar Denúncia de Bullying (Login)"),
-                                leading=ft.IconButton(
-                                    icon=ft.Icons.ARROW_BACK,
-                                    tooltip="Voltar",  # Tooltip modificado
-                                    on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
+                            ft.AppBar(title=ft.Text(f"Acompanhar Denúncia de Bullying"), 
+                                    bgcolor=ft.Colors.BLUE_300,
+                                    center_title=False,
+                                    actions=[
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Column([
+                                                    ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                    ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                    ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                    ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                    ], spacing=1),
+                                                ft.Icon(ft.Icons.PERSON)
+                                            ], 
+                                            spacing=2,
+                                            ),
+                                            padding=ft.padding.only(right=20)
+                                        )
+                                    ],
+                                  leading=ft.IconButton(
+                                      icon=ft.Icons.ARROW_BACK,
+                                      tooltip="Voltar",  # Tooltip modificado
+                                      on_click=lambda _: page.go("/menu"),  # Comportamento de voltar padrão
+                                    ),
                                 ),
-                                bgcolor=ft.Colors.RED_300,
-                            ),
-                            ft.Row(
-                                controls=[ft.Text("Informar o número da denúncia e a senha para fazer o login e poder ter acesso ao acompanhamento da denúncia.", weight=ft.FontWeight.BOLD)],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                            ),
-                            ft.Row(
-                                controls=[tf_n_denuncia],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                            ),
-                            ft.Row(
-                                controls=[tf_senha],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                            ),
-                            ft.Row(
-                                controls=[lb_erro],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                            ),
-                            ft.Row(
-                                # controls=[ft.ElevatedButton("Login", on_click=lambda _: page.go("/acompanhar"))],
-                                controls=[bt_login],
-                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
-                            ),
+                            ft.Column(
+                                controls=[
+                                    ft.Container(
+                                        tabela,
+                                        expand=True,
+                                        border_radius=0,
+                                    ),
+                                ],
+                                expand=True,
+                            )
                         ],
                     )
                 )
-            
+
             # Página Acompanhar Denúncia de Bullying
             if page.route == "/acompanhar":
-                # print(denuncia_id)
                 denuncia = bd.buscar_denuncia_por_id(denuncia_id)
-                # print(denuncia)
+                status = denuncia["Status"] # type: ignore
                 tf_v_n_denuncia = ft.TextField(label="Número da Denúncia", value=str(denuncia_id), read_only=True)
-                # tf_v_datahora = ft.TextField(label="Data e Hora", value=denuncia["DataHora"], read_only=True) # type: ignore
-                tf_v_datahora = ft.TextField(label="Data e Hora", value=datetime.fromisoformat(denuncia["DataHora"]).strftime('%d/%m/%Y %H:%M:%S'), read_only=True) # type: ignore
+                tf_v_datahora = ft.TextField(label="Data e Hora", value=datetime.fromisoformat(denuncia["DataHora"]).strftime(FORMATO_DATA_HORA), read_only=True) # type: ignore
                 tf_v_descricao_o_que = ft.TextField(label="Descrição - O que?", value=denuncia["DescricaoOque"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
                 tf_v_descricao_como_se_sente = ft.TextField(label="Descrição - Como se sente?", value=denuncia["DescricaoComoSeSente"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
                 tf_v_local = ft.TextField(label="Local", value=denuncia["Local"], read_only=True) # type: ignore
@@ -716,13 +1081,12 @@ def main(page: ft.Page):
                     cor = ft.Colors.RED
                 elif denuncia["Status"] == "Em Atendimento": # type: ignore
                     cor = ft.Colors.BLUE
-                elif denuncia["Status"] == "Em Atendimento": # type: ignore
+                elif denuncia["Status"] == "Encerrada": # type: ignore
                     cor = ft.Colors.GREEN
                 tf_v_status = ft.TextField(label="Status", value=denuncia["Status"], read_only=True, color=cor) # type: ignore
                 denuncia_comentarios = bd.listar_denuncias_comentarios_usuario(denuncia_id=denuncia_id)
                 bt_novo_comentario = ft.ElevatedButton("Novo Comentário", on_click=lambda _: page.go("/acompanharnovocomentario"), icon=ft.Icons.ADD_COMMENT)
                 bt_reuniao = ft.ElevatedButton("Reuniao", on_click=lambda _: page.go("/reuniao"), icon=ft.Icons.INSERT_COMMENT)
-                # print(denuncia_comentarios)
                 # Criar itens da lista de comentário
                 itens_comentarios = []
                 for msg in denuncia_comentarios:
@@ -730,9 +1094,9 @@ def main(page: ft.Page):
                     ct_comentario = ft.Container(
                         content=ft.Column(
                             controls=[
-                                ft.Text(msg["UsuarioTipo"], weight=ft.FontWeight.BOLD),
+                                ft.Text(msg["UsuarioTipo"] if msg["UsuarioTipo"] == "Denunciante" else f'{msg["UsuarioTipo"]} - {msg["UsuarioNome"]}', weight=ft.FontWeight.BOLD),
                                 ft.Text(msg["Comentario"], size=14),
-                                ft.Text(datetime.fromisoformat(msg["DataHora"]).strftime('%d/%m/%Y %H:%M:%S'), size=10, color=ft.Colors.GREY),
+                                ft.Text(datetime.fromisoformat(msg["DataHora"]).strftime(FORMATO_DATA_HORA), size=10, color=ft.Colors.GREY),
                             ],
                             spacing=2,
                         ),
@@ -758,12 +1122,28 @@ def main(page: ft.Page):
                         [
                             ft.AppBar(
                                 title=ft.Text("Acompanhar Denúncia de Bullying"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
                                 leading=ft.IconButton(
                                     icon=ft.Icons.ARROW_BACK,
                                     tooltip="Voltar",  # Tooltip modificado
-                                    on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
+                                    on_click=lambda _: page.go("/acompanhardenuncia"),  # Comportamento de voltar padrão
                                 ),
-                                bgcolor=ft.Colors.RED_300,
                             ),
                             # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
                                 ft.Row(
@@ -805,8 +1185,15 @@ def main(page: ft.Page):
             # Página Acompanhar Denúncia de Bullying Novo Comentário
             if page.route == "/acompanharnovocomentario":
                 comentario_valida = False
+                status_valida = True
                 tf_v_n_denuncia = ft.TextField(label="Número da Denúncia", value=str(denuncia_id), read_only=True)
                 tf_comentario = ft.TextField(label="Comentário", multiline=True, width=610, on_change=validar_comentario)
+                dd_status = ft.Dropdown(label="Status", 
+                                                options=[
+                                                    ft.dropdown.Option("Aberta"),
+                                                    ft.dropdown.Option("Em Atendimento"),
+                                                    ft.dropdown.Option("Encerrada"),
+                                            ], on_change=validar_status, value=status)
                 bt_salvar_comentario = ft.ElevatedButton("Salvar Comentário", disabled=True, on_click=novo_comentario, icon=ft.Icons.DATA_SAVER_ON)
                 page.views.append(
                    ft.View(
@@ -819,7 +1206,23 @@ def main(page: ft.Page):
                                     tooltip="Voltar",  # Tooltip modificado
                                     on_click=lambda _: page.go("/acompanhar"),  # Comportamento de voltar padrão
                                 ),
-                                bgcolor=ft.Colors.RED_300,
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
                             ),
                             ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
                                 ft.Row(
@@ -828,6 +1231,10 @@ def main(page: ft.Page):
                                 ),
                                 ft.Row(
                                     controls=[tf_comentario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[dd_status],
                                     alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                                 ),
                                 ft.Row(
@@ -863,14 +1270,30 @@ def main(page: ft.Page):
                         "/reuniao",
                         [
                             ft.AppBar(
-                                title=ft.Text(f"Reunião [{data_reuniao.strftime('%d/%m/%Y')}] [Denúncia N° {denuncia_id}]"),
+                                title=ft.Text(f"Reunião [{data_reuniao.strftime(FORMATO_DATA)}] [Denúncia N° {denuncia_id}]"),
                                 leading=ft.IconButton(
                                     icon=ft.Icons.ARROW_BACK,
                                     tooltip="Voltar",  # Tooltip modificado
                                     # on_click=lambda _: page.go("/acompanhar"),  # Comportamento de voltar padrão
                                     on_click=sair_reuniao,  # Comportamento de voltar padrão
                                 ),
-                                bgcolor=ft.Colors.RED_300,
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
                             ),
 
                             ft.Row(
@@ -881,97 +1304,1266 @@ def main(page: ft.Page):
                         ],
                     )
                 )
+                page.update()
                 # Iniciar atualização automática
                 flag_thread = True
+                flag_thread_I = False
                 asyncio.run(auto_reuniao(ct_reuniao, page))
 
-            # Página Materiais Educativos
-            if page.route == "/materiaiseducativos":
-                # link_url1 ="https://drive.google.com/file/d/12zx4dH49ydysy4i5-DeaZjdZUQefIrXH/view?usp=sharing"
-                # link_url2 ="https://drive.google.com/file/d/1wB3Hcfw4FFT_wPOPd3ZK1kR6EDJVtrJS/view?usp=sharing"
-                # link_url3 ="https://www.youtube.com/watch?v=mWQoikd72A4"
-
-                rows = []
-
-                header = ft.Container(
-                    content=ft.Row(
-                        controls=[
-                            ft.Text("Descrição do Material Educativo", weight=ft.FontWeight.BOLD, expand=True),
-                            ft.Text("Link", weight=ft.FontWeight.BOLD),
-                        ],
-                        spacing=20
-                    ),
-                    padding=10,
-                    bgcolor=ft.Colors.GREY_200,
+            # Página Cadastro de Usuários
+            if page.route == "/cadastrousuarios":
+                flag_permissao = (usuario_tipo == "Administrador")
+                # Cabeçalho fixo
+                cabecalho = ft.Row(
+                    controls=[
+                        criar_celula(ft.Text("Id", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Email", weight=ft.FontWeight.BOLD), 200, ft.alignment.top_center),
+                        criar_celula(ft.Text("Nome", weight=ft.FontWeight.BOLD), 350, ft.alignment.top_center),
+                        criar_celula(ft.Text("Tipo", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Status", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("", weight=ft.FontWeight.BOLD), 200, ft.alignment.top_center),
+                    ],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.START
                 )
-                rows.append(header)
-
-                materiais = bd.listar_materiais_educativos(status="Ativo")
-
-                for item in materiais:
-                    descricao = ft.Text(
-                        item["Descricao"],
-                        size=14,
-                        color=ft.Colors.BLACK87,
-                        selectable=True,
-                    )
-
-                    link_btn = ft.ElevatedButton(
-                        text="Link",
-                        icon=ft.Icons.LINK,
-                        on_click=lambda e, url=item["Link"]: webbrowser.open(url),
-                        style=ft.ButtonStyle(
-                            padding=10,
-                            bgcolor=ft.Colors.BLUE_50,
-                            color=ft.Colors.BLUE_700
+                usuarios = bd.listar_usuarios()
+                # Corpo da tabela com scroll
+                linhas = []
+                zebrado = False
+                for usu in usuarios:
+                    cor = ft.Colors.BLACK
+                    if usu["Status"] == "Ativo": # type: ignore
+                        cor = ft.Colors.GREEN
+                    elif usu["Status"] == "Bloqueado": # type: ignore
+                        cor = ft.Colors.ORANGE
+                    elif usu["Status"] == "Cancelado": # type: ignore
+                        cor = ft.Colors.RED
+                    if zebrado:
+                        cor_zebrado = ft.Colors.BLUE_GREY_100
+                    else:
+                        cor_zebrado = ft.Colors.WHITE
+                    zebrado = not zebrado
+                    linhas.append(
+                        ft.Container(
+                            ft.Row(
+                                controls=[
+                                    criar_celula(ft.Text(usu["UsuarioId"], weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(ft.Text(usu["Email"]), 200, ft.alignment.top_center),
+                                    criar_celula(
+                                        ft.Text(
+                                            usu["Nome"],
+                                            max_lines=2,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                            tooltip=usu["Nome"],
+                                            selectable=True,
+                                        ), 
+                                        350
+                                    ),
+                                    criar_celula(ft.Text(usu["Tipo"]), 150, ft.alignment.top_center),
+                                    criar_celula(ft.Text(usu["Status"], color=cor, weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(
+                                                 ft.Row(
+                                                     controls=[
+                                                         ft.IconButton(
+                                                             ft.Icons.SELECT_ALL,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Visualiza Usuário",
+                                                             on_click=lambda e, select_usuario=usu["UsuarioId"]: seleciona_usuario(e, select_usuario)
+                                                         ),
+                                                         ft.IconButton(
+                                                             ft.Icons.EDIT_SHARP,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Edita Usuário",
+                                                             disabled=not flag_permissao,
+                                                             on_click=lambda e, select_usuario=usu["UsuarioId"]: seleciona_editar_usuario(e, select_usuario)
+                                                         ),
+                                                         ft.IconButton(
+                                                             ft.Icons.REMOVE_SHARP,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Apaga Usuário",
+                                                             disabled=not flag_permissao,
+                                                             on_click=lambda e, select_usuario=usu["UsuarioId"]: seleciona_apagar_usuario(e, select_usuario)
+                                                         ),
+                                                         ft.IconButton(
+                                                             ft.Icons.LOCK_RESET,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Reseta Senha Usuário",
+                                                             disabled=not flag_permissao,
+                                                             on_click=lambda e, select_usuario=usu["UsuarioId"]: seleciona_resetar_usuario(e, select_usuario)
+                                                         ),
+                                                     ],
+                                                     alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                                 ),
+                                        200, ft.alignment.top_center
+                                    )
+                                ],
+                                spacing=0,
+                                vertical_alignment=ft.CrossAxisAlignment.START
+                            ),
+                            bgcolor=cor_zebrado,
+                            padding=0,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
                         )
                     )
-
-                    row = ft.Container(
-                        content=ft.Row(
-                            controls=[
-                                ft.Container(descricao, expand=True, padding=10),
-                                ft.Container(link_btn, padding=10),
-                            ],
-                            spacing=20,
-                            vertical_alignment=ft.CrossAxisAlignment.START,
+                # Tabela completa
+                tabela = ft.Column(
+                    controls=[
+                        # Cabeçalho fixo
+                        ft.Container(
+                            cabecalho,
+                            bgcolor=ft.Colors.GREY,
+                            padding=10,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
                         ),
-                        border=ft.border.only(bottom=ft.border.BorderSide(1, ft.Colors.GREY_300)),
-                        padding=ft.padding.symmetric(vertical=5),
+                        # Corpo com scroll
+                        ft.Container(
+                            content=ft.ListView(
+                                controls=linhas,
+                                expand=True,
+                                spacing=0,
+                                padding=0,
+                            ),
+                            border=ft.border.only(
+                                bottom=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            ),
+                            expand=True
+                        )
+                    ],
+                    spacing=0,
+                    expand=True
+                )
+                page.views.append(
+                   ft.View(
+                        "/cadastrousuarios",
+                        [
+                            ft.AppBar(title=ft.Text(f"Cadastro de Usuários"), 
+                                    bgcolor=ft.Colors.BLUE_300,
+                                    center_title=False,
+                                    actions=[
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Column([
+                                                    ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                    ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                    ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                    ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                    ], spacing=1),
+                                                ft.Icon(ft.Icons.PERSON)
+                                            ], 
+                                            spacing=2,
+                                            ),
+                                            padding=ft.padding.only(right=20)
+                                        )
+                                    ],
+                                  leading=ft.IconButton(
+                                      icon=ft.Icons.ARROW_BACK,
+                                      tooltip="Voltar",  # Tooltip modificado
+                                      on_click=lambda _: page.go("/menu"),  # Comportamento de voltar padrão
+                                    ),
+                                ),
+                            ft.Row(
+                                    controls=[ft.ElevatedButton("Criar Usuário", disabled=not flag_permissao, on_click=lambda _: page.go("/criarusuario"), icon=ft.Icons.ADD_SHARP)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Column(
+                                controls=[
+                                    ft.Container(
+                                        tabela,
+                                        expand=True,
+                                        border_radius=0,
+                                    ),
+                                ],
+                                expand=True,
+                            )
+                        ],
                     )
-        
-                    rows.append(row)
+                )
 
-
-
+            # Página Visualizar Usuário
+            if page.route == "/usuario":
+                usuario = bd.buscar_usuario_por_id(w_usuario_id)
+                tf_v_id = ft.TextField(label="Id", value=str(w_usuario_id), read_only=True)
+                tf_v_email = ft.TextField(label="Email", value=usuario["Email"], read_only=True, width=610) # type: ignore
+                tf_v_nome = ft.TextField(label="Nome", value=usuario["Nome"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_tipo = ft.TextField(label="Tipo", value=usuario["Tipo"], read_only=True) # type: ignore
+                cor = ft.Colors.BLACK
+                if usuario["Status"] == "Ativo": # type: ignore
+                    cor = ft.Colors.GREEN
+                elif usuario["Status"] == "Bloqueado": # type: ignore
+                    cor = ft.Colors.ORANGE
+                elif usuario["Status"] == "Cancelado": # type: ignore
+                    cor = ft.Colors.RED
+                tf_v_status_u = ft.TextField(label="Status", value=usuario["Status"], read_only=True, color=cor) # type: ignore
 
                 page.views.append(
                    ft.View(
-                        "/materiaiseducativos",
+                        "/usuario",
                         [
                             ft.AppBar(
-                                title=ft.Text("Materiais Educativos"),
+                                title=ft.Text("Visualiza Usuário"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
                                 leading=ft.IconButton(
                                     icon=ft.Icons.ARROW_BACK,
                                     tooltip="Voltar",  # Tooltip modificado
-                                    on_click=lambda _: page.go("/"),  # Comportamento de voltar padrão
+                                    on_click=lambda _: page.go("/cadastrousuarios"),  # Comportamento de voltar padrão
                                 ),
-                                bgcolor=ft.Colors.RED_300,
                             ),
-                            ft.Container(
-                                content=ft.Column(
-                                    controls=rows,
-                                    spacing=0,
-                                    expand=True,
-                                    scroll=ft.ScrollMode.AUTO,
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_v_id],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                                 ),
-                                border=ft.border.all(1, ft.Colors.GREY_400),
-                                border_radius=5,
-                                expand=True,
+                                ft.Row(
+                                    controls=[tf_v_email],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_nome],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_tipo, tf_v_status_u],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Criar Usuário
+            if page.route == "/criarusuario":
+                email_usuario_valida = False
+                nome_usuario_valida = False
+                tipo_usuario_valida = False
+
+                tf_email_usuario = ft.TextField(label="Email", width=610, on_change=validar_email_usuario) # type: ignore
+                tf_nome_usuario = ft.TextField(label="Nome", multiline=True, width=610, max_lines=3, on_change=validar_nome_usuario)  # type: ignore
+                dd_tipo_usuario = ft.Dropdown(label="Tipo", 
+                                      options=[
+                                          ft.dropdown.Option("Administrador"),
+                                          ft.dropdown.Option("Diretor"),
+                                          ft.dropdown.Option("Psicólogo"),
+                                          ], 
+                                      on_change=validar_tipo_usuario)
+                lb_erro_usuario = ft.Text("", color=ft.Colors.RED)
+                bt_criar_usuario = ft.ElevatedButton("Salvar", on_click=criar_usuario, icon=ft.Icons.SAVE_ALT_SHARP, disabled=True)
+
+                page.views.append(
+                   ft.View(
+                        "/criarusuario",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Criar Usuário"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastrousuarios"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_email_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_nome_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[dd_tipo_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[lb_erro_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_criar_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Editar Usuário
+            if page.route == "/editarusuario":
+                nome_usuario_valida = True
+                tipo_usuario_valida = True
+                status_usuario_valida = True
+                usuario = bd.buscar_usuario_por_id(w_usuario_id)
+                tf_v_id = ft.TextField(label="Id", value=str(w_usuario_id), read_only=True)
+                tf_v_email = ft.TextField(label="Email", value=usuario["Email"], read_only=True, width=610) # type: ignore
+                tf_nome_usuario = ft.TextField(label="Nome", value=usuario["Nome"], multiline=True, width=610, max_lines=3, on_change=validar_nome_usuario_e)  # type: ignore
+                dd_tipo_usuario = ft.Dropdown(label="Tipo", 
+                                      options=[
+                                          ft.dropdown.Option("Administrador"),
+                                          ft.dropdown.Option("Diretor"),
+                                          ft.dropdown.Option("Psicólogo"),
+                                          ], 
+                                      value=usuario["Tipo"],  # type: ignore
+                                      on_change=validar_tipo_usuario_e)
+                dd_status_usuario = ft.Dropdown(label="Status", 
+                                      options=[
+                                          ft.dropdown.Option("Ativo"),
+                                          ft.dropdown.Option("Bloqueado"),
+                                          ft.dropdown.Option("Cancelado"),
+                                          ], 
+                                      value=usuario["Status"],   # type: ignore
+                                      on_change=validar_status_usuario_e)
+                lb_erro_usuario = ft.Text("", color=ft.Colors.RED)
+                bt_editar_usuario = ft.ElevatedButton("Salvar", on_click=editar_usuario, icon=ft.Icons.SAVE_ALT_SHARP, disabled=True)
+
+                page.views.append(
+                   ft.View(
+                        "/editarusuario",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Editar Usuário"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastrousuarios"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+
+                                ft.Row(
+                                    controls=[tf_v_id],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_email],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_nome_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[dd_tipo_usuario, dd_status_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[lb_erro_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_editar_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Apagar Usuário
+            if page.route == "/apagarusuario":
+                usuario = bd.buscar_usuario_por_id(w_usuario_id)
+                tf_v_id = ft.TextField(label="Id", value=str(w_usuario_id), read_only=True)
+                tf_v_email = ft.TextField(label="Email", value=usuario["Email"], read_only=True, width=610) # type: ignore
+                tf_v_nome = ft.TextField(label="Nome", value=usuario["Nome"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_tipo = ft.TextField(label="Tipo", value=usuario["Tipo"], read_only=True) # type: ignore
+                cor = ft.Colors.BLACK
+                if usuario["Status"] == "Ativo": # type: ignore
+                    cor = ft.Colors.GREEN
+                elif usuario["Status"] == "Bloqueado": # type: ignore
+                    cor = ft.Colors.ORANGE
+                elif usuario["Status"] == "Cancelado": # type: ignore
+                    cor = ft.Colors.RED
+                tf_v_status_u = ft.TextField(label="Status", value=usuario["Status"], read_only=True, color=cor) # type: ignore
+                bt_apagar_usuario = ft.ElevatedButton("Apagar", on_click=apagar_usuario, icon=ft.Icons.DELETE)
+
+                page.views.append(
+                   ft.View(
+                        "/apagarusuario",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Apagar Usuário"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastrousuarios"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_v_id],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_email],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_nome],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_tipo, tf_v_status_u],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[ft.Text("Apagar o Usuário?", weight=ft.FontWeight.BOLD, color=ft.Colors.RED)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_apagar_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Resetar Senha Usuário
+            if page.route == "/resetarusuario":
+                usuario = bd.buscar_usuario_por_id(w_usuario_id)
+                tf_v_id = ft.TextField(label="Id", value=str(w_usuario_id), read_only=True)
+                tf_v_email = ft.TextField(label="Email", value=usuario["Email"], read_only=True, width=610) # type: ignore
+                tf_v_nome = ft.TextField(label="Nome", value=usuario["Nome"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_tipo = ft.TextField(label="Tipo", value=usuario["Tipo"], read_only=True) # type: ignore
+                cor = ft.Colors.BLACK
+                if usuario["Status"] == "Ativo": # type: ignore
+                    cor = ft.Colors.GREEN
+                elif usuario["Status"] == "Bloqueado": # type: ignore
+                    cor = ft.Colors.ORANGE
+                elif usuario["Status"] == "Cancelado": # type: ignore
+                    cor = ft.Colors.RED
+                tf_v_status_u = ft.TextField(label="Status", value=usuario["Status"], read_only=True, color=cor) # type: ignore
+                bt_apagar_usuario = ft.ElevatedButton("Resetar Senha", on_click=resetar_usuario, icon=ft.Icons.LOCK_RESET)
+
+                page.views.append(
+                   ft.View(
+                        "/resetarusuario",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Resetar Senha do Usuário"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastrousuarios"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_v_id],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_email],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_nome],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_tipo, tf_v_status_u],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[ft.Text("Resetar Senha do Usuário?", weight=ft.FontWeight.BOLD, color=ft.Colors.RED)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_apagar_usuario],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Mudar Senha Usuario
+            if page.route == "/mudarsenha":
+                senha_atual_valida = False
+                senha_nova_valida = False
+                senha_nova_confirmar_valida = False
+                tf_senha_atual = ft.TextField(label="Senha Atual", password=True, can_reveal_password=True, on_change=validar_senha_atual)
+                tf_senha_nova = ft.TextField(label="Nova Senha", password=True, can_reveal_password=True, on_change=validar_senha_nova)
+                cl_validacao_indicadores = ft.Column(spacing=5)
+                tf_senha_nova_confirmar = ft.TextField(label="Confirmar a Senha", password=True, can_reveal_password=True, on_change=validar_senha_nova_confirmar)
+                cl_validacao_indicadores_confirmar = ft.Column(spacing=5)
+                lb_erro_muda_senha = ft.Text("", color=ft.Colors.RED)
+                bt_mudar_senha = ft.ElevatedButton("Mudar Senha", on_click=mudar_senha, disabled=True, icon=ft.Icons.PUBLISHED_WITH_CHANGES)
+
+                page.views.append(
+                   ft.View(
+                        "/mudarsenha",
+                        [
+                            ft.AppBar(
+                                title=ft.Text(f"Mudar Senha do Usuário [{usuario_id}]"),
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/menu"),  # Comportamento de voltar padrão
+                                ),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                            ),
+                            ft.Row(
+                                controls=[tf_senha_atual],
+                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                controls=[tf_senha_nova, cl_validacao_indicadores],
+                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                controls=[tf_senha_nova_confirmar, cl_validacao_indicadores_confirmar],
+                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                controls=[lb_erro_muda_senha],
+                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Row(
+                                controls=[bt_mudar_senha],
+                                alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
                             ),
                         ],
                     )
-            )
+                )
+
+            # Página Cadastro de Materiais Educativos
+            if page.route == "/cadastromateriais":
+                flag_permissao = True
+                # Cabeçalho fixo
+                cabecalho = ft.Row(
+                    controls=[
+                        criar_celula(ft.Text("Id", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Descrição", weight=ft.FontWeight.BOLD), 550, ft.alignment.top_center),
+                        criar_celula(ft.Text("Link", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Status", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("", weight=ft.FontWeight.BOLD), 200, ft.alignment.top_center),
+                    ],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.START
+                )
+                materiais = bd.listar_materiais_educativos()
+                # Corpo da tabela com scroll
+                linhas = []
+                zebrado = False
+                for mat in materiais:
+                    cor = ft.Colors.BLACK
+                    if mat["Status"] == "Ativo": # type: ignore
+                        cor = ft.Colors.GREEN
+                    elif mat["Status"] == "Não Ativo": # type: ignore
+                        cor = ft.Colors.RED
+                    if zebrado:
+                        cor_zebrado = ft.Colors.BLUE_GREY_100
+                    else:
+                        cor_zebrado = ft.Colors.WHITE
+                    zebrado = not zebrado
+                    linhas.append(
+                        ft.Container(
+                            ft.Row(
+                                controls=[
+                                    criar_celula(ft.Text(mat["MaterialId"], weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(
+                                        ft.Text(
+                                            mat["Descricao"],
+                                            max_lines=3,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                            tooltip=mat["Descricao"],
+                                            selectable=True,
+                                        ), 
+                                        550
+                                    ),
+                                    criar_celula(ft.IconButton(
+                                                     ft.Icons.LINK,
+                                                     icon_color=ft.Colors.BLUE_700,
+                                                     tooltip="Link",
+                                                     on_click=lambda e, link=mat["Link"]: webbrowser.open(link),
+                                                    ), 150, ft.alignment.top_center),
+                                    criar_celula(ft.Text(mat["Status"], color=cor, weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(
+                                                 ft.Row(
+                                                     controls=[
+                                                         ft.IconButton(
+                                                             ft.Icons.SELECT_ALL,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Visualiza Material Educativo",
+                                                             on_click=lambda e, select_material=mat["MaterialId"]: seleciona_material(e, select_material)
+                                                         ),
+                                                         ft.IconButton(
+                                                             ft.Icons.EDIT_SHARP,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Edita Material Eduicativo",
+                                                             disabled=not flag_permissao,
+                                                             on_click=lambda e, select_material=mat["MaterialId"]: seleciona_editar_material(e, select_material)
+                                                         ),
+                                                         ft.IconButton(
+                                                             ft.Icons.REMOVE_SHARP,
+                                                             icon_color=ft.Colors.BLUE_700,
+                                                             tooltip="Apaga Material Educativo",
+                                                             disabled=not flag_permissao,
+                                                             on_click=lambda e, select_material=mat["MaterialId"]: seleciona_apagar_material(e, select_material)
+                                                         ),
+                                                     ],
+                                                     alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                                 ),
+                                        200, ft.alignment.top_center
+                                    )
+                                ],
+                                spacing=0,
+                                vertical_alignment=ft.CrossAxisAlignment.START
+                            ),
+                            bgcolor=cor_zebrado,
+                            padding=0,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        )
+                    )
+                # Tabela completa
+                tabela = ft.Column(
+                    controls=[
+                        # Cabeçalho fixo
+                        ft.Container(
+                            cabecalho,
+                            bgcolor=ft.Colors.GREY,
+                            padding=10,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        ),
+                        # Corpo com scroll
+                        ft.Container(
+                            content=ft.ListView(
+                                controls=linhas,
+                                expand=True,
+                                spacing=0,
+                                padding=0,
+                            ),
+                            border=ft.border.only(
+                                bottom=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            ),
+                            expand=True
+                        )
+                    ],
+                    spacing=0,
+                    expand=True
+                )
+                page.views.append(
+                   ft.View(
+                        "/cadastromateriais",
+                        [
+                            ft.AppBar(title=ft.Text(f"Cadastro de Materiais Educativos"), 
+                                    bgcolor=ft.Colors.BLUE_300,
+                                    center_title=False,
+                                    actions=[
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Column([
+                                                    ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                    ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                    ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                    ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                    ], spacing=1),
+                                                ft.Icon(ft.Icons.PERSON)
+                                            ], 
+                                            spacing=2,
+                                            ),
+                                            padding=ft.padding.only(right=20)
+                                        )
+                                    ],
+                                  leading=ft.IconButton(
+                                      icon=ft.Icons.ARROW_BACK,
+                                      tooltip="Voltar",  # Tooltip modificado
+                                      on_click=lambda _: page.go("/menu"),  # Comportamento de voltar padrão
+                                    ),
+                                ),
+                            ft.Row(
+                                    controls=[ft.ElevatedButton("Criar Material Educativo", disabled=not flag_permissao, on_click=lambda _: page.go("/criarmaterial"), icon=ft.Icons.ADD_SHARP)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            ),
+                            ft.Column(
+                                controls=[
+                                    ft.Container(
+                                        tabela,
+                                        expand=True,
+                                        border_radius=0,
+                                    ),
+                                ],
+                                expand=True,
+                            )
+                        ],
+                    )
+                )
+
+            # Página Visualizar Material Educativo
+            if page.route == "/material":
+                material = bd.buscar_material_educativo_por_id(w_material_id)
+                usuario = bd.buscar_usuario_por_id(material["UsuarioIdCriou"]) # type: ignore
+                aux_usuario_criou = f"{material['UsuarioIdCriou']}" # type: ignore
+                if not usuario == None:
+                    aux_usuario_criou = f"{material['UsuarioIdCriou']} - {usuario['Nome']}" # type: ignore
+                aux_usuario_alterou = " "
+                if not material['UsuarioIdAlterou'] == 0:  # type: ignore   
+                   aux_usuario_alterou = f"{material['UsuarioIdAlterou']}" # type: ignore
+                   if not usuario == None:
+                      aux_usuario_alterou = f"{material['UsuarioIdAlterou']} - {usuario['Nome']}" # type: ignore
+                tf_v_id_material = ft.TextField(label="Id", value=str(w_material_id), read_only=True)
+                tf_v_descricao_material = ft.TextField(label="Descrição", value=material["Descricao"], read_only=True, width=610, max_lines=3) # type: ignore
+                tf_v_link_material = ft.TextField(label="Link", value=material["Link"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_usuario_criou_material = ft.TextField(label="Usuário Criou", value=aux_usuario_criou, read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_usuario_alterou_material = ft.TextField(label="Usuário Alterou", value=aux_usuario_alterou, read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_data_hora_ultima_material = ft.TextField(label="Data e Hora Última Alteração", value=datetime.fromisoformat(material["DataHoraUltAlt"]).strftime(FORMATO_DATA_HORA), read_only=True, width=200) # type: ignore
+                cor = ft.Colors.BLACK
+                if material["Status"] == "Ativo": # type: ignore
+                    cor = ft.Colors.GREEN
+                elif material["Status"] == "Não Ativo": # type: ignore
+                    cor = ft.Colors.RED
+                tf_v_status_material = ft.TextField(label="Status", value=material["Status"], read_only=True, color=cor) # type: ignore
+
+                page.views.append(
+                   ft.View(
+                        "/material",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Visualiza Material Educativo"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastromateriais"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_v_id_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_descricao_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_link_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_usuario_criou_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_usuario_alterou_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_data_hora_ultima_material, tf_v_status_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Criar Material Educativo
+            if page.route == "/criarmaterial":
+                descricao_material_valida = False
+                link_material_valida = False
+                tf_descricao_material = ft.TextField(label="Descrição", multiline=True, width=610, max_lines=3, on_change=validar_descricao_material)  # type: ignore
+                tf_link_material = ft.TextField(label="Link", multiline=True, width=610, max_lines=3, on_change=validar_link_material)  # type: ignore
+                lb_erro_material = ft.Text("", color=ft.Colors.RED)
+                bt_criar_material = ft.ElevatedButton("Salvar", on_click=criar_material, icon=ft.Icons.SAVE_ALT_SHARP, disabled=True)
+
+                page.views.append(
+                   ft.View(
+                        "/criarmaterial",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Criar Material Educativo"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastromateriais"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_descricao_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_link_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[lb_erro_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_criar_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Editar Material Educativo
+            if page.route == "/editarmaterial":
+                descricao_material_valida = True
+                link_material_valida = True
+                status_material_valida = True
+                material = bd.buscar_material_educativo_por_id(w_material_id)
+                tf_v_id_material = ft.TextField(label="Id", value=str(w_material_id), read_only=True)
+                tf_descricao_material = ft.TextField(label="Nome", value=material["Descricao"], multiline=True, width=610, max_lines=3, on_change=validar_descricao_material_e)  # type: ignore
+                tf_link_material = ft.TextField(label="Nome", value=material["Link"], multiline=True, width=610, max_lines=3, on_change=validar_link_material_e)  # type: ignore
+                dd_status_material = ft.Dropdown(label="Status", 
+                                      options=[
+                                          ft.dropdown.Option("Ativo"),
+                                          ft.dropdown.Option("Não Ativo"),
+                                          ], 
+                                      value=material["Status"],   # type: ignore
+                                      on_change=validar_status_material_e)
+                lb_erro_material = ft.Text("", color=ft.Colors.RED)
+                bt_editar_material = ft.ElevatedButton("Salvar", on_click=editar_material, icon=ft.Icons.SAVE_ALT_SHARP, disabled=True)
+
+                page.views.append(
+                   ft.View(
+                        "/editarmaterial",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Editar Material Educativo"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastromateriais"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+
+                                ft.Row(
+                                    controls=[tf_v_id_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_descricao_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_link_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[dd_status_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[lb_erro_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_editar_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Apagar material Educativo
+            if page.route == "/apagarmaterial":
+                material = bd.buscar_material_educativo_por_id(w_material_id)
+                usuario = bd.buscar_usuario_por_id(material["UsuarioIdCriou"]) # type: ignore
+                aux_usuario_criou = f"{material['UsuarioIdCriou']}" # type: ignore
+                if not usuario == None:
+                    aux_usuario_criou = f"{material['UsuarioIdCriou']} - {usuario['Nome']}" # type: ignore
+                aux_usuario_alterou = " "
+                if not material['UsuarioIdAlterou'] == 0:  # type: ignore   
+                   aux_usuario_alterou = f"{material['UsuarioIdAlterou']}" # type: ignore
+                   if not usuario == None:
+                      aux_usuario_alterou = f"{material['UsuarioIdAlterou']} - {usuario['Nome']}" # type: ignore
+                tf_v_id_material = ft.TextField(label="Id", value=str(w_material_id), read_only=True)
+                tf_v_descricao_material = ft.TextField(label="Descrição", value=material["Descricao"], read_only=True, width=610, max_lines=3) # type: ignore
+                tf_v_link_material = ft.TextField(label="Link", value=material["Link"], read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_usuario_criou_material = ft.TextField(label="Usuário Criou", value=aux_usuario_criou, read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_usuario_alterou_material = ft.TextField(label="Usuário Alterou", value=aux_usuario_alterou, read_only=True, multiline=True, width=610, max_lines=3) # type: ignore
+                tf_v_data_hora_ultima_material = ft.TextField(label="Data e Hora Última Alteração", value=datetime.fromisoformat(material["DataHoraUltAlt"]).strftime(FORMATO_DATA_HORA), read_only=True, width=200) # type: ignore
+                cor = ft.Colors.BLACK
+                if material["Status"] == "Ativo": # type: ignore
+                    cor = ft.Colors.GREEN
+                elif material["Status"] == "Não Ativo": # type: ignore
+                    cor = ft.Colors.RED
+                tf_v_status_material = ft.TextField(label="Status", value=material["Status"], read_only=True, color=cor) # type: ignore
+                bt_apagar_material = ft.ElevatedButton("Apagar", on_click=apagar_material, icon=ft.Icons.DELETE)
+
+                page.views.append(
+                   ft.View(
+                        "/apagarmaterial",
+                        [
+                            ft.AppBar(
+                                title=ft.Text("Apagar Material Educativo"),
+                                bgcolor=ft.Colors.BLUE_300,
+                                actions=[
+                                    ft.Container(
+                                        content=ft.Row([
+                                            ft.Column([
+                                                ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                ], spacing=1),
+                                            ft.Icon(ft.Icons.PERSON)
+                                        ], 
+                                        spacing=2,
+                                        ),
+                                        padding=ft.padding.only(right=20)
+                                    )
+                                ],
+                                leading=ft.IconButton(
+                                    icon=ft.Icons.ARROW_BACK,
+                                    tooltip="Voltar",  # Tooltip modificado
+                                    on_click=lambda _: page.go("/cadastromateriais"),  # Comportamento de voltar padrão
+                                ),
+                            ),
+                            # ft.Container(content=ft.Column(scroll=ft.ScrollMode.AUTO, expand=True, controls=[
+                                ft.Row(
+                                    controls=[tf_v_id_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_descricao_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_link_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_usuario_criou_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_usuario_alterou_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[tf_v_data_hora_ultima_material, tf_v_status_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[ft.Text("Apagar o Material Educativo?", weight=ft.FontWeight.BOLD, color=ft.Colors.RED)],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                                ft.Row(
+                                    controls=[bt_apagar_material],
+                                    alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                                ),
+                            # ]), expand=True, padding=10),
+                        ],
+                    )
+                )
+
+            # Página Visualizar Log
+            if page.route == "/visualizarlog":
+                flag_permissao = True
+                # Cabeçalho fixo
+                cabecalho = ft.Row(
+                    controls=[
+                        criar_celula(ft.Text("Id", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Data e Hora", weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                        criar_celula(ft.Text("Descrição", weight=ft.FontWeight.BOLD), 650, ft.alignment.top_center),
+                        criar_celula(ft.Text("Usuário", weight=ft.FontWeight.BOLD), 300, ft.alignment.top_center),
+                    ],
+                    spacing=0,
+                    vertical_alignment=ft.CrossAxisAlignment.START
+                )
+                logs = bd.listar_log()
+                # Corpo da tabela com scroll
+                linhas = []
+                zebrado = False
+                for loga in logs:
+                    if zebrado:
+                        cor_zebrado = ft.Colors.BLUE_GREY_100
+                    else:
+                        cor_zebrado = ft.Colors.WHITE
+                    zebrado = not zebrado
+                    data_obj = datetime.strptime(loga["DataHora"], FORMATO_DATA_HORA_ISO)
+                    data_formatada = data_obj.strftime(FORMATO_DATA_HORA)
+                    usuario = bd.buscar_usuario_por_id(loga["Usuarioid"]) # type: ignore
+                    aux_usuario_log = f"{loga['Usuarioid']}" # type: ignore
+                    if not usuario == None:
+                       aux_usuario_log = f"{loga['Usuarioid']} - {usuario['Nome']}" # type: ignore
+                    linhas.append(
+                        ft.Container(
+                            ft.Row(
+                                controls=[
+                                    criar_celula(ft.Text(loga["LoglId"], weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(ft.Text(data_formatada, weight=ft.FontWeight.BOLD), 150, ft.alignment.top_center),
+                                    criar_celula(
+                                        ft.Text(
+                                            loga["Descricao"],
+                                            max_lines=3,
+                                            overflow=ft.TextOverflow.ELLIPSIS,
+                                            tooltip=loga["Descricao"],
+                                            selectable=True,
+                                        ), 
+                                        650
+                                    ),
+                                    criar_celula(ft.Text(aux_usuario_log, weight=ft.FontWeight.BOLD), 300, ft.alignment.top_center),
+                                ],
+                                spacing=0,
+                                vertical_alignment=ft.CrossAxisAlignment.START
+                            ),
+                            bgcolor=cor_zebrado,
+                            padding=0,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                # right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        )
+                    )
+                # Tabela completa
+                tabela = ft.Column(
+                    controls=[
+                        # Cabeçalho fixo
+                        ft.Container(
+                            cabecalho,
+                            bgcolor=ft.Colors.GREY,
+                            padding=10,
+                            border=ft.border.only(
+                                top=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            )
+                        ),
+                        # Corpo com scroll
+                        ft.Container(
+                            content=ft.ListView(
+                                controls=linhas,
+                                expand=True,
+                                spacing=0,
+                                padding=0,
+                            ),
+                            border=ft.border.only(
+                                bottom=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                left=ft.border.BorderSide(1, ft.Colors.BLUE_400),
+                                right=ft.border.BorderSide(1, ft.Colors.BLUE_400)
+                            ),
+                            expand=True
+                        )
+                    ],
+                    spacing=0,
+                    expand=True
+                )
+                page.views.append(
+                   ft.View(
+                        "/visualizarlog",
+                        [
+                            ft.AppBar(title=ft.Text(f"Visualizar Log"), 
+                                    bgcolor=ft.Colors.BLUE_300,
+                                    center_title=False,
+                                    actions=[
+                                        ft.Container(
+                                            content=ft.Row([
+                                                ft.Column([
+                                                    ft.Text(f"Id: {usuario_id}", size=10, height=13),
+                                                    ft.Text(f"Nome: {usuario_nome}", size=10, height=13),
+                                                    ft.Text(f"Email: {usuario_email}", size=10, height=13),
+                                                    ft.Text(f"Tipo: {usuario_tipo}", size=10, height=13),
+                                                    ], spacing=1),
+                                                ft.Icon(ft.Icons.PERSON)
+                                            ], 
+                                            spacing=2,
+                                            ),
+                                            padding=ft.padding.only(right=20)
+                                        )
+                                    ],
+                                  leading=ft.IconButton(
+                                      icon=ft.Icons.ARROW_BACK,
+                                      tooltip="Voltar",  # Tooltip modificado
+                                      on_click=lambda _: page.go("/menu"),  # Comportamento de voltar padrão
+                                    ),
+                                ),
+                            # ft.Row(
+                            #         controls=[ft.ElevatedButton("Filtro", on_click=lambda _: page.go("/menu"), icon=ft.Icons.FILTER_ALT)],
+                            #         alignment=ft.MainAxisAlignment.CENTER,  # Centraliza horizontalmente
+                            # ),
+                            ft.Column(
+                                controls=[
+                                    ft.Container(
+                                        tabela,
+                                        expand=True,
+                                        border_radius=0,
+                                    ),
+                                ],
+                                expand=True,
+                            )
+                        ],
+                    )
+                )
+
 
             page.update()
 
